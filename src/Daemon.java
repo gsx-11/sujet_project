@@ -51,20 +51,19 @@ public class Daemon {
         directory = (DirectoryService) registry.lookup("DirectoryService");
 
         // Use specified IP, or auto-detect
-        String localHost = myHost;
-        if (localHost == null || localHost.isEmpty()) {
-            localHost = InetAddress.getLocalHost().getHostAddress();
+        if (myHost == null || myHost.isEmpty()) {
+            myHost = InetAddress.getLocalHost().getHostAddress();
         }
-        clientId = localHost + ":" + daemonPort;
+        clientId = myHost + ":" + daemonPort;
 
         // Setup log file
         new File("logs").mkdirs();
-        String logFile = "logs/daemon-" + localHost + "-" + daemonPort + ".log";
+        String logFile = "logs/daemon-" + myHost + "-" + daemonPort + ".log";
         logWriter = new PrintWriter(new FileWriter(logFile, true), true);
 
         // Register files
         List<String> files = scanFiles();
-        directory.register(clientId, localHost, daemonPort, files);
+        directory.register(clientId, myHost, daemonPort, files);
         log("[Daemon " + clientId + "] Started");
         log("[Daemon] Shared folder: " + sharedFolder.getAbsolutePath());
         log("[Daemon] Files: " + files);
@@ -118,12 +117,19 @@ public class Daemon {
             try {
                 Thread.sleep(HEARTBEAT_INTERVAL);
                 List<String> current = scanFiles();
-                if (!current.equals(lastFiles)) {
-                    directory.heartbeat(clientId, current);
+                boolean needUpdate = !current.equals(lastFiles);
+                boolean alive = directory.heartbeat(clientId, needUpdate ? current : null);
+
+                if (!alive) {
+                    // Directory doesn't know us anymore, re-register
+                    log("[Daemon] Lost registration, re-registering...");
+                    directory.register(clientId, myHost, daemonPort, current);
+                    log("[Daemon] Re-registered with " + current.size() + " file(s)");
+                }
+
+                if (needUpdate) {
                     lastFiles = current;
                     log("[Daemon] File list updated: " + current);
-                } else {
-                    directory.heartbeat(clientId, null);
                 }
             } catch (InterruptedException e) {
                 break;

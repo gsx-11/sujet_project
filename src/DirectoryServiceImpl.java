@@ -63,7 +63,12 @@ public class DirectoryServiceImpl extends UnicastRemoteObject implements Directo
         removeClient(clientId);
     }
 
-    public void heartbeat(String clientId, List<String> files) throws RemoteException {
+    public boolean heartbeat(String clientId, List<String> files) throws RemoteException {
+        // If client was removed (timeout), tell it to re-register
+        if (!clients.containsKey(clientId)) {
+            Directory.log("[Directory] Heartbeat from unknown client: " + clientId + " -> need re-register");
+            return false;
+        }
         heartbeats.put(clientId, System.currentTimeMillis());
         if (files != null) {
             ClientInfo info = clients.get(clientId);
@@ -71,6 +76,7 @@ public class DirectoryServiceImpl extends UnicastRemoteObject implements Directo
                 register(clientId, info.host, info.port, files);
             }
         }
+        return true;
     }
 
     public synchronized List<ClientInfo> getSourcesForFile(String filename) throws RemoteException {

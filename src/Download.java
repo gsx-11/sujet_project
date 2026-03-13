@@ -13,6 +13,8 @@ public class Download {
     private static final byte CMD_GET_SIZE = 0;
     private static final byte CMD_GET_FRAGMENT = 1;
     private static final int MAX_RETRIES = 3;
+    private static final int MAX_LOAD = 10;
+    private static final int MIN_SOURCES = 1;
 
     private String filename;
     private String directoryHost;
@@ -62,14 +64,37 @@ public class Download {
         directory = (DirectoryService) registry.lookup("DirectoryService");
 
         // Get sources (sorted by load)
-        List<ClientInfo> sources = directory.getSourcesForFile(filename);
-        if (sources.isEmpty()) {
+        List<ClientInfo> allSources = directory.getSourcesForFile(filename);
+        if (allSources.isEmpty()) {
             log("[Download] No sources found for: " + filename);
             return;
         }
         log("[Download] === START === file=" + filename + " fragment_size=" + fragmentSize
                 + " compression=" + useCompression);
-        log("[Download] Sources:");
+        log("[Download] All sources from Directory:");
+        for (ClientInfo s : allSources) {
+            log("[Download]   " + s);
+        }
+
+        // Filter out overloaded sources
+        List<ClientInfo> sources = new ArrayList<>();
+        for (ClientInfo s : allSources) {
+            if (s.load <= MAX_LOAD) {
+                sources.add(s);
+            }
+        }
+
+        // Fallback: if too few sources left, take the least loaded ones
+        if (sources.size() < MIN_SOURCES) {
+            log("[Download] Only " + sources.size() + " source(s) under MAX_LOAD=" + MAX_LOAD
+                    + ", fallback to top " + MIN_SOURCES + " least loaded");
+            sources.clear();
+            for (int i = 0; i < Math.min(MIN_SOURCES, allSources.size()); i++) {
+                sources.add(allSources.get(i)); // allSources already sorted by load asc
+            }
+        }
+
+        log("[Download] Using " + sources.size() + " source(s):");
         for (ClientInfo s : sources) {
             log("[Download]   " + s);
         }
